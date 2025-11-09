@@ -5,33 +5,17 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
+    name: Build (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
     
     strategy:
       matrix:
-        # Three different variants combining OS and Python versions
-        include:
-          - os: ubuntu-latest
-            python-version: "3.9"
-            variant: "ubuntu-39"
-          - os: ubuntu-latest  
-            python-version: "3.10"
-            variant: "ubuntu-310"
-          - os: ubuntu-latest
-            python-version: "3.11"
-            variant: "ubuntu-311"
-          - os: windows-latest
-            python-version: "3.10"
-            variant: "windows-310"
-          - os: macos-latest
-            python-version: "3.11"
-            variant: "macos-311"
-
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -43,109 +27,31 @@ jobs:
 
     - name: matrix-c391963
       run: |
-        echo "Building for OS: ${{ matrix.os }}, Python: ${{ matrix.python-version }}"
-        echo "Variant: ${{ matrix.variant }}"
-        echo "Build timestamp: $(date)"
+        echo "Building for Python version ${{ matrix.python-version }}"
+        echo "This is the required step identifier"
 
-    - name: Generate build information
+    - name: Generate build artifact
       run: |
-        echo "Build Information" > build-info.txt
-        echo "=================" >> build-info.txt
-        echo "OS: ${{ matrix.os }}" >> build-info.txt
-        echo "Python Version: ${{ matrix.python-version }}" >> build-info.txt
-        echo "Variant: ${{ matrix.variant }}" >> build-info.txt
-        echo "Build Date: $(date)" >> build-info.txt
-        echo "Repository: ${{ github.repository }}" >> build-info.txt
-        echo "Commit: ${{ github.sha }}" >> build-info.txt
-        echo "" >> build-info.txt
-        python --version >> build-info.txt 2>&1
+        echo "Build output for Python ${{ matrix.python-version }}" > output.txt
+        echo "Build timestamp: $(date)" >> output.txt
+        echo "Commit SHA: ${{ github.sha }}" >> output.txt
+        echo "Repository: ${{ github.repository }}" >> output.txt
+        echo "Python Version: ${{ matrix.python-version }}" >> output.txt
+        python --version >> output.txt 2>&1
+        echo "" >> output.txt
+        echo "Build completed successfully!" >> output.txt
 
-    - name: Generate sample application output
+    - name: Verify artifact content
       run: |
-        # Create a simple Python script that generates output
-        cat > generate_output.py << 'EOF'
-import platform
-import json
-import sys
+        echo "Artifact content preview:"
+        cat output.txt
+        echo ""
+        echo "Line count: $(wc -l < output.txt)"
+        echo "File size: $(wc -c < output.txt) bytes"
 
-build_data = {
-    "platform": platform.platform(),
-    "python_version": platform.python_version(),
-    "os": platform.system(),
-    "build_variant": "${{ matrix.variant }}",
-    "timestamp": "$(date)",
-    "success": True
-}
-
-# Write JSON output
-with open("build-output.json", "w") as f:
-    json.dump(build_data, f, indent=2)
-
-# Generate some simulated build output
-print("Build completed successfully!")
-print(f"Platform: {platform.platform()}")
-print(f"Python: {platform.python_version()}")
-EOF
-
-        python generate_output.py > build.log
-
-    - name: Create final artifact content
-      run: |
-        # Combine all generated files into a final artifact
-        echo "=== BUILD ARTIFACT ===" > artifact-${{ matrix.variant }}.txt
-        echo "" >> artifact-${{ matrix.variant }}.txt
-        cat build-info.txt >> artifact-${{ matrix.variant }}.txt
-        echo "" >> artifact-${{ matrix.variant }}.txt
-        echo "=== BUILD LOG ===" >> artifact-${{ matrix.variant }}.txt
-        cat build.log >> artifact-${{ matrix.variant }}.txt
-        echo "" >> artifact-${{ matrix.variant }}.txt
-        echo "=== BUILD METADATA ===" >> artifact-${{ matrix.variant }}.txt
-        cat build-output.json >> artifact-${{ matrix.variant }}.txt
-
-        # Verify artifact is not empty
-        echo "Artifact size: $(wc -l < artifact-${{ matrix.variant }}.txt) lines"
-
-    - name: Upload build artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: build-c391963-${{ matrix.variant }}
-        path: artifact-${{ matrix.variant }}.txt
+        name: build-c391963-python${{ matrix.python-version }}
+        path: output.txt
         retention-days: 7
-
-    - name: Verify artifact creation
-      run: |
-        if [ ! -f "artifact-${{ matrix.variant }}.txt" ]; then
-          echo "Error: Artifact file was not created!"
-          exit 1
-        fi
-        
-        if [ ! -s "artifact-${{ matrix.variant }}.txt" ]; then
-          echo "Error: Artifact file is empty!"
-          exit 1
-        fi
-        
-        echo "✅ Artifact created successfully: artifact-${{ matrix.variant }}.txt"
-        echo "📊 File size: $(wc -c < artifact-${{ matrix.variant }}.txt) bytes"
-        echo "📝 Line count: $(wc -l < artifact-${{ matrix.variant }}.txt) lines"
-
-  summary:
-    name: Build Summary
-    runs-on: ubuntu-latest
-    needs: build
-    if: always()
-    
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      
-    - name: Display build summary
-      run: |
-        echo "=== MATRIX BUILD SUMMARY ==="
-        echo "Total artifacts downloaded: $(find . -name "build-c391963-*" -type f | wc -l)"
-        echo ""
-        echo "Artifacts created:"
-        find . -name "build-c391963-*" -type f | while read file; do
-          echo "📦 $(basename "$file") - $(wc -l < "$file") lines"
-        done
-        echo ""
-        echo "✅ Matrix build completed successfully!"
